@@ -30,6 +30,9 @@
     .nav-btn.active { color: #00e676; font-weight: bold; }
     .page { display: none; }
     .page.active { display: block; }
+    .action-btn { background: #00e676; color: #000; border: none; padding: 10px 16px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-right: 8px; }
+    .danger-btn { background: #ff5252; color: #fff; border: none; padding: 10px 16px; font-weight: bold; border-radius: 6px; cursor: pointer; }
+    textarea { width: 100%; height: 250px; background: #161d22; color: #00e676; border: 1px solid #1c242b; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 0.8rem; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -66,9 +69,18 @@
     <div class="cell-grid" id="cellContainer"></div>
   </div>
 
+  <div id="logsPage" class="page">
+    <h4 style="color: #00e676; margin: 10px 0;">ESP32 Internal Flash Memory Logs</h4>
+    <button class="action-btn" onclick="fetchLogs()">Fetch Stored Logs</button>
+    <button class="action-btn" onclick="downloadCSV()">Download CSV</button>
+    <button class="danger-btn" onclick="clearLogs()">Clear Flash Memory</button>
+    <textarea id="logArea" readonly placeholder="Click 'Fetch Stored Logs' to read internal flash data..."></textarea>
+  </div>
+
   <div class="nav-bar">
     <button class="nav-btn" onclick="showPage('statusPage', this)">Status</button>
     <button class="nav-btn active" onclick="showPage('homePage', this)">Home</button>
+    <button class="nav-btn" onclick="showPage('logsPage', this)">Logs</button>
   </div>
 
   <script>
@@ -77,32 +89,59 @@
     client.on('connect', () => {
       document.getElementById('connStatus').innerText = 'Cloud Status: ONLINE';
       client.subscribe('suncore/jk_bms/live_data');
+      client.subscribe('suncore/jk_bms/history_data');
     });
 
     client.on('message', (topic, message) => {
-      const d = JSON.parse(message.toString());
-      document.getElementById('socText').innerText = d.soc + '%';
-      document.getElementById('voltText').innerText = d.totalV.toFixed(2) + 'V';
-      document.getElementById('currText').innerText = d.curr.toFixed(2) + 'A';
-      document.getElementById('hiCell').innerText = d.hi.toFixed(3);
-      document.getElementById('loCell').innerText = d.lo.toFixed(3);
-      document.getElementById('diffCell').innerText = d.diff.toFixed(3);
-      document.getElementById('balCurr').innerText = d.bal.toFixed(3);
+      if (topic === 'suncore/jk_bms/live_data') {
+        const d = JSON.parse(message.toString());
+        document.getElementById('socText').innerText = d.soc + '%';
+        document.getElementById('voltText').innerText = d.totalV.toFixed(2) + 'V';
+        document.getElementById('currText').innerText = d.curr.toFixed(2) + 'A';
+        document.getElementById('hiCell').innerText = d.hi.toFixed(3);
+        document.getElementById('loCell').innerText = d.lo.toFixed(3);
+        document.getElementById('diffCell').innerText = d.diff.toFixed(3);
+        document.getElementById('balCurr').innerText = d.bal.toFixed(3);
 
-      const offset = 251.2 - (251.2 * d.soc / 100);
-      document.getElementById('gaugeArc').style.strokeDashoffset = offset;
+        const offset = 251.2 - (251.2 * d.soc / 100);
+        document.getElementById('gaugeArc').style.strokeDashoffset = offset;
 
-      let html = '';
-      d.cells.forEach((v, i) => {
-        let col = (v === d.hi && v > 0) ? '#00bcd4' : ((v === d.lo && v > 0) ? '#ff5252' : '#00e676');
-        let idxStr = (i + 1) < 10 ? '0' + (i + 1) : (i + 1);
-        html += `<div class="cell-item">
-          <span class="cell-idx">${idxStr}</span>
-          <span style="color:${col}; font-weight:bold;">${v.toFixed(3)}</span>
-        </div>`;
-      });
-      document.getElementById('cellContainer').innerHTML = html;
+        let html = '';
+        d.cells.forEach((v, i) => {
+          let col = (v === d.hi && v > 0) ? '#00bcd4' : ((v === d.lo && v > 0) ? '#ff5252' : '#00e676');
+          let idxStr = (i + 1) < 10 ? '0' + (i + 1) : (i + 1);
+          html += `<div class="cell-item">
+            <span class="cell-idx">${idxStr}</span>
+            <span style="color:${col}; font-weight:bold;">${v.toFixed(3)}</span>
+          </div>`;
+        });
+        document.getElementById('cellContainer').innerHTML = html;
+      } else if (topic === 'suncore/jk_bms/history_data') {
+        document.getElementById('logArea').value += message.toString();
+      }
     });
+
+    function fetchLogs() {
+      document.getElementById('logArea').value = "Timestamp(s),TotalV,Current,SOC,HighCell,LowCell,VoltDiff\n";
+      client.publish('suncore/jk_bms/get_history', 'FETCH_LOGS');
+    }
+
+    function clearLogs() {
+      if (confirm("Are you sure you want to clear all flash memory logs?")) {
+        client.publish('suncore/jk_bms/get_history', 'CLEAR_LOGS');
+        document.getElementById('logArea').value = "Flash Memory Logs Cleared.";
+      }
+    }
+
+    function downloadCSV() {
+      const data = document.getElementById('logArea').value;
+      const blob = new Blob([data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.setAttribute('href', url);
+      a.setAttribute('download', 'bms_history_log.csv');
+      a.click();
+    }
 
     function showPage(pageId, btn) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
