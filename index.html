@@ -30,9 +30,12 @@
     .nav-btn.active { color: #00e676; font-weight: bold; }
     .page { display: none; }
     .page.active { display: block; }
-    .action-btn { background: #00e676; color: #000; border: none; padding: 10px 16px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-right: 8px; }
-    .danger-btn { background: #ff5252; color: #fff; border: none; padding: 10px 16px; font-weight: bold; border-radius: 6px; cursor: pointer; }
-    textarea { width: 100%; height: 250px; background: #161d22; color: #00e676; border: 1px solid #1c242b; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 0.8rem; margin-top: 10px; }
+    .filter-box { background: #161d22; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
+    .filter-box label { font-size: 0.8rem; color: #8a9ba8; display: block; margin-top: 6px; }
+    .filter-box input { width: 100%; background: #0b0f12; color: #00e676; border: 1px solid #1c242b; padding: 8px; border-radius: 4px; font-size: 0.9rem; }
+    .action-btn { background: #00e676; color: #000; border: none; padding: 10px 14px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 10px; margin-right: 6px; }
+    .danger-btn { background: #ff5252; color: #fff; border: none; padding: 10px 14px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 10px; }
+    textarea { width: 100%; height: 220px; background: #161d22; color: #00e676; border: 1px solid #1c242b; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 0.8rem; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -70,11 +73,22 @@
   </div>
 
   <div id="logsPage" class="page">
-    <h4 style="color: #00e676; margin: 10px 0;">ESP32 Internal Flash Memory Logs</h4>
-    <button class="action-btn" onclick="fetchLogs()">Fetch Stored Logs</button>
-    <button class="action-btn" onclick="downloadCSV()">Download CSV</button>
-    <button class="danger-btn" onclick="clearLogs()">Clear Flash Memory</button>
-    <textarea id="logArea" readonly placeholder="Click 'Fetch Stored Logs' to read internal flash data..."></textarea>
+    <h4 style="color: #00e676; margin: 10px 0;">Filter Flash Memory Logs</h4>
+    
+    <div class="filter-box">
+      <label>From Date & Time:</label>
+      <input type="datetime-local" id="startTime">
+
+      <label>To Date & Time:</label>
+      <input type="datetime-local" id="endTime">
+
+      <button class="action-btn" onclick="fetchLogs()">Fetch Logs</button>
+      <button class="action-btn" onclick="filterLogs()">Apply Date Filter</button>
+      <button class="action-btn" onclick="downloadCSV()">Download CSV</button>
+      <button class="danger-btn" onclick="clearLogs()">Clear Flash</button>
+    </div>
+
+    <textarea id="logArea" readonly placeholder="Click 'Fetch Logs' then 'Apply Date Filter'..."></textarea>
   </div>
 
   <div class="nav-bar">
@@ -84,6 +98,7 @@
   </div>
 
   <script>
+    let rawLogBuffer = "";
     const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
 
     client.on('connect', () => {
@@ -117,18 +132,49 @@
         });
         document.getElementById('cellContainer').innerHTML = html;
       } else if (topic === 'suncore/jk_bms/history_data') {
-        document.getElementById('logArea').value += message.toString();
+        rawLogBuffer += message.toString();
+        document.getElementById('logArea').value = rawLogBuffer;
       }
     });
 
     function fetchLogs() {
-      document.getElementById('logArea').value = "Timestamp(s),TotalV,Current,SOC,HighCell,LowCell,VoltDiff\n";
+      rawLogBuffer = "DateTime,TotalV,Current,SOC,HighCell,LowCell,VoltDiff\n";
+      document.getElementById('logArea').value = "Fetching from ESP32...";
       client.publish('suncore/jk_bms/get_history', 'FETCH_LOGS');
     }
 
+    function filterLogs() {
+      const startVal = document.getElementById('startTime').value;
+      const endVal = document.getElementById('endTime').value;
+
+      if (!startVal || !endVal) {
+        alert("Please select both 'From' and 'To' dates.");
+        return;
+      }
+
+      const startDate = new Date(startVal);
+      const endDate = new Date(endVal);
+
+      const lines = rawLogBuffer.split('\n');
+      let filtered = lines[0] + '\n'; // Keep header
+
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const parts = lines[i].split(',');
+        const rowDate = new Date(parts[0]);
+
+        if (rowDate >= startDate && rowDate <= endDate) {
+          filtered += lines[i] + '\n';
+        }
+      }
+
+      document.getElementById('logArea').value = filtered;
+    }
+
     function clearLogs() {
-      if (confirm("Are you sure you want to clear all flash memory logs?")) {
+      if (confirm("Clear all logs in flash memory?")) {
         client.publish('suncore/jk_bms/get_history', 'CLEAR_LOGS');
+        rawLogBuffer = "";
         document.getElementById('logArea').value = "Flash Memory Logs Cleared.";
       }
     }
@@ -139,7 +185,7 @@
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.setAttribute('href', url);
-      a.setAttribute('download', 'bms_history_log.csv');
+      a.setAttribute('download', 'bms_filtered_log.csv');
       a.click();
     }
 
