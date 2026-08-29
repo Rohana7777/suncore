@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JK BMS Monitor</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #0b0f12; color: #ffffff; margin: 0; padding: 12px; padding-bottom: 70px; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1c242b; padding-bottom: 8px; }
+    .status-badge { color: #00e676; font-weight: bold; font-size: 0.85rem; }
+    .gauge-container { position: relative; width: 220px; height: 220px; margin: 15px auto; }
+    .gauge-svg { transform: rotate(-90deg); width: 100%; height: 100%; }
+    .gauge-bg { fill: none; stroke: #1c242b; stroke-width: 12; }
+    .gauge-fill { fill: none; stroke: #00e676; stroke-width: 12; stroke-linecap: round; transition: stroke-dashoffset 0.5s; }
+    .gauge-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+    .soc-val { font-size: 2.8rem; font-weight: bold; color: #00e676; }
+    .pill { background: #111a1e; border: 1px solid #00e676; border-radius: 12px; padding: 2px 12px; font-size: 0.9rem; margin: 2px 0; display: inline-block; }
+    .alert-box { background: #d87a00; color: #000; border-radius: 8px; padding: 8px 12px; font-weight: bold; font-size: 0.85rem; margin-bottom: 12px; }
+    .card-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: #161d22; border-radius: 8px; padding: 10px; margin-bottom: 10px; text-align: center; }
+    .card-val { font-size: 1.1rem; font-weight: bold; }
+    .card-lbl { font-size: 0.65rem; color: #8a9ba8; margin-top: 4px; }
+    .cyan { color: #00bcd4; } .red { color: #ff5252; } .green { color: #00e676; }
+    .cell-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+    .cell-item { background: #161d22; padding: 8px; border-radius: 6px; display: flex; align-items: center; }
+    .cell-idx { background: #00bcd4; color: #000; font-weight: bold; font-size: 0.75rem; border-radius: 4px; padding: 2px 5px; margin-right: 8px; }
+    .nav-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #11161a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #1c242b; }
+    .nav-btn { background: none; border: none; color: #8a9ba8; font-size: 0.8rem; cursor: pointer; }
+    .nav-btn.active { color: #00e676; font-weight: bold; }
+    .page { display: none; }
+    .page.active { display: block; }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar">
+    <div class="status-badge" id="connStatus">Connecting...</div>
+  </div>
+
+  <div id="homePage" class="page active">
+    <div class="gauge-container">
+      <svg class="gauge-svg" viewBox="0 0 100 100">
+        <circle class="gauge-bg" cx="50" cy="50" r="40" />
+        <circle id="gaugeArc" class="gauge-fill" cx="50" cy="50" r="40" stroke-dasharray="251.2" stroke-dashoffset="0" />
+      </svg>
+      <div class="gauge-text">
+        <div class="soc-val" id="socText">--%</div>
+        <div class="pill" id="voltText">--V</div><br>
+        <div class="pill" id="currText">--A</div>
+      </div>
+    </div>
+
+    <div class="alert-box">Status: Live MQTT Cloud Sync</div>
+
+    <div class="card-grid">
+      <div><div class="card-val cyan" id="hiCell">--</div><div class="card-lbl">High Cell(V)</div></div>
+      <div><div class="card-val red" id="loCell">--</div><div class="card-lbl">Low Cell(V)</div></div>
+      <div><div class="card-val green" id="diffCell">--</div><div class="card-lbl">Volt.-Diff(V)</div></div>
+      <div><div class="card-val green" id="balCurr">--</div><div class="card-lbl">Bal.-Curr.(A)</div></div>
+    </div>
+  </div>
+
+  <div id="statusPage" class="page">
+    <h4 style="color: #00e676; margin: 10px 0;">Cell Voltages (V)</h4>
+    <div class="cell-grid" id="cellContainer"></div>
+  </div>
+
+  <div class="nav-bar">
+    <button class="nav-btn" onclick="showPage('statusPage', this)">Status</button>
+    <button class="nav-btn active" onclick="showPage('homePage', this)">Home</button>
+  </div>
+
+  <script>
+    // Connect to HiveMQ Public Secure WebSocket Broker over Port 8884
+    const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+
+    client.on('connect', () => {
+      document.getElementById('connStatus').innerText = 'Cloud Status: ONLINE';
+      client.subscribe('suncore/jk_bms/live_data');
+    });
+
+    client.on('message', (topic, message) => {
+      const d = JSON.parse(message.toString());
+      document.getElementById('socText').innerText = d.soc + '%';
+      document.getElementById('voltText').innerText = d.totalV.toFixed(2) + 'V';
+      document.getElementById('currText').innerText = d.curr.toFixed(2) + 'A';
+      document.getElementById('hiCell').innerText = d.hi.toFixed(3);
+      document.getElementById('loCell').innerText = d.lo.toFixed(3);
+      document.getElementById('diffCell').innerText = d.diff.toFixed(3);
+      document.getElementById('balCurr').innerText = d.bal.toFixed(3);
+
+      const offset = 251.2 - (251.2 * d.soc / 100);
+      document.getElementById('gaugeArc').style.strokeDashoffset = offset;
+
+      let html = '';
+      d.cells.forEach((v, i) => {
+        let col = (v === d.hi) ? '#00bcd4' : ((v === d.lo) ? '#ff5252' : '#00e676');
+        html += `<div class="cell-item">
+          <span class="cell-idx">0${i+1}</span>
+          <span style="color:${col}; font-weight:bold;">${v.toFixed(3)}</span>
+        </div>`;
+      });
+      document.getElementById('cellContainer').innerHTML = html;
+    });
+
+    function showPage(pageId, btn) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(pageId).classList.add('active');
+      btn.classList.add('active');
+    }
+  </script>
+</body>
+</html>
