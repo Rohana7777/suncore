@@ -190,9 +190,9 @@
     </div>
 
     <script>
-        // --- MQTT WebSocket Configuration ---
+        // --- Secure MQTT WebSocket Configuration ---
         const brokerHost = "broker.hivemq.com";
-        const brokerPort = 8000; // Unencrypted WebSocket port for maximum web browser compatibility
+        const brokerPort = 8884; // Secure TLS WebSocket Port (wss://)
         const topicLive  = "suncore/jk_bms/live_data";
 
         const clientId = "SuncoreWeb-" + Math.floor(Math.random() * 10000);
@@ -209,13 +209,14 @@
             `;
         }
 
-        // Connection Handlers
+        // Connection Loss Handler
         client.onConnectionLost = function (responseObject) {
             document.getElementById('cloudStatus').innerText = "OFFLINE";
             document.getElementById('cloudStatus').className = "status-offline";
             setTimeout(connectMQTT, 3000);
         };
 
+        // Incoming Payload Message Handler
         client.onMessageArrived = function (message) {
             try {
                 const data = JSON.parse(message.payloadString);
@@ -248,8 +249,10 @@
             }
         };
 
+        // Secure MQTT Connect Routine
         function connectMQTT() {
             client.connect({
+                useSSL: true, // Enables TLS for WSS connections on port 8884
                 onSuccess: function () {
                     document.getElementById('cloudStatus').innerText = "ONLINE";
                     document.getElementById('cloudStatus').className = "status-online";
