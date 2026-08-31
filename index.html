@@ -195,7 +195,8 @@
         const brokerPort = 8884; // Secure TLS WebSocket Port (wss://)
         const topicLive  = "suncore/jk_bms/live_data";
 
-        const clientId = "SuncoreWeb-" + Math.floor(Math.random() * 10000);
+        // Generate a random unique Client ID to prevent connection dropping
+        const clientId = "SuncoreWeb-" + Math.floor(Math.random() * 100000);
         const client = new Paho.MQTT.Client(brokerHost, brokerPort, clientId);
 
         // Populate initial blank cell cards
@@ -211,54 +212,59 @@
 
         // Connection Loss Handler
         client.onConnectionLost = function (responseObject) {
+            console.warn("[MQTT] Connection lost. Retrying in 3s...", responseObject.errorMessage);
             document.getElementById('cloudStatus').innerText = "OFFLINE";
             document.getElementById('cloudStatus').className = "status-offline";
             setTimeout(connectMQTT, 3000);
         };
 
-        // Incoming Payload Message Handler
+        // Incoming Payload Message Handler (with explicit console output)
         client.onMessageArrived = function (message) {
+            console.log("[MQTT Payload Received]:", message.payloadString);
             try {
                 const data = JSON.parse(message.payloadString);
 
                 // --- Weather Telemetry ---
                 if (data.weather !== undefined) document.getElementById('weatherDesc').innerText = data.weather;
-                if (data.ambTemp !== undefined) document.getElementById('ambTemp').innerText = data.ambTemp.toFixed(1);
+                if (data.ambTemp !== undefined) document.getElementById('ambTemp').innerText = Number(data.ambTemp).toFixed(1);
                 if (data.ambHum !== undefined)  document.getElementById('ambHum').innerText  = data.ambHum;
 
                 // --- BMS Core Telemetry ---
                 if (data.soc !== undefined)    document.getElementById('socVal').innerText       = data.soc + "%";
-                if (data.totalV !== undefined) document.getElementById('totalVoltage').innerText = data.totalV.toFixed(2) + "V";
-                if (data.curr !== undefined)   document.getElementById('currentVal').innerText  = data.curr.toFixed(2) + "A";
+                if (data.totalV !== undefined) document.getElementById('totalVoltage').innerText = Number(data.totalV).toFixed(2) + "V";
+                if (data.curr !== undefined)   document.getElementById('currentVal').innerText  = Number(data.curr).toFixed(2) + "A";
 
                 // --- BMS Diagnostic Telemetry ---
-                if (data.hi !== undefined)   document.getElementById('highCell').innerText = data.hi.toFixed(3);
-                if (data.lo !== undefined)   document.getElementById('lowCell').innerText  = data.lo.toFixed(3);
-                if (data.diff !== undefined) document.getElementById('voltDiff').innerText = data.diff.toFixed(3);
-                if (data.bal !== undefined)  document.getElementById('balCurr').innerText  = data.bal.toFixed(3);
+                if (data.hi !== undefined)   document.getElementById('highCell').innerText = Number(data.hi).toFixed(3);
+                if (data.lo !== undefined)   document.getElementById('lowCell').innerText  = Number(data.lo).toFixed(3);
+                if (data.diff !== undefined) document.getElementById('voltDiff').innerText = Number(data.diff).toFixed(3);
+                if (data.bal !== undefined)  document.getElementById('balCurr').innerText  = Number(data.bal).toFixed(3);
 
                 // --- Individual Cell Array Parsing ---
                 if (Array.isArray(data.cells)) {
                     data.cells.forEach((val, idx) => {
                         const cellElem = document.getElementById(`cell_${idx + 1}`);
-                        if (cellElem) cellElem.innerText = val.toFixed(3) + "V";
+                        if (cellElem) cellElem.innerText = Number(val).toFixed(3) + "V";
                     });
                 }
             } catch (err) {
-                console.error("Error parsing MQTT JSON: ", err);
+                console.error("[MQTT Error] Failed to parse JSON string:", err);
             }
         };
 
         // Secure MQTT Connect Routine
         function connectMQTT() {
+            console.log("[MQTT] Attempting connection to wss://broker.hivemq.com:8884/mqtt...");
             client.connect({
                 useSSL: true, // Enables TLS for WSS connections on port 8884
                 onSuccess: function () {
+                    console.log("[MQTT] Connected successfully! Subscribing to:", topicLive);
                     document.getElementById('cloudStatus').innerText = "ONLINE";
                     document.getElementById('cloudStatus').className = "status-online";
                     client.subscribe(topicLive);
                 },
                 onFailure: function (err) {
+                    console.error("[MQTT] Connection failed:", err);
                     document.getElementById('cloudStatus').innerText = "FAILED";
                     document.getElementById('cloudStatus').className = "status-offline";
                     setTimeout(connectMQTT, 3000);
