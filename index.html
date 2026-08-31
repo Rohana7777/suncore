@@ -196,7 +196,8 @@
         const topicLive  = "suncore/jk_bms/live_data";
 
         const clientId = "SuncoreWeb-" + Math.floor(Math.random() * 100000);
-        const client = new Paho.MQTT.Client(brokerHost, brokerPort, clientId);
+        // Explicitly passing "/mqtt" as path argument for EMQX WebSockets
+        const client = new Paho.MQTT.Client(brokerHost, brokerPort, "/mqtt", clientId);
 
         // Populate initial blank cell cards
         const cellContainer = document.getElementById('cellContainer');
