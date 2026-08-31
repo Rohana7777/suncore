@@ -190,14 +190,17 @@
     </div>
 
     <script>
+        // --- EMQX Secure WebSocket Configuration ---
         const brokerHost = "broker.emqx.io";
-        const brokerPort = 8084; // Secure WSS port for EMQX
+        const brokerPort = 8084;
         const topicLive  = "suncore/jk_bms/live_data";
 
         const clientId = "SuncoreWeb-" + Math.floor(Math.random() * 100000);
-        const client = new Paho.MQTT.Client(brokerHost, Number(brokerPort), clientId);
+        
+        // Constructor arguments: host, port, path, clientId
+        const client = new Paho.MQTT.Client(brokerHost, Number(brokerPort), "/mqtt", clientId);
 
-        // Populate cell UI
+        // Populate initial blank cell cards
         const cellContainer = document.getElementById('cellContainer');
         for (let i = 1; i <= 16; i++) {
             cellContainer.innerHTML += `
@@ -208,6 +211,7 @@
             `;
         }
 
+        // Connection Loss Handler
         client.onConnectionLost = function (responseObject) {
             console.warn("[MQTT] Connection lost:", responseObject.errorMessage);
             document.getElementById('cloudStatus').innerText = "OFFLINE";
@@ -215,24 +219,29 @@
             setTimeout(connectMQTT, 3000);
         };
 
+        // Incoming Payload Handler
         client.onMessageArrived = function (message) {
             console.log("[MQTT Payload Received]:", message.payloadString);
             try {
                 const data = JSON.parse(message.payloadString);
 
+                // --- Weather Telemetry ---
                 if (data.weather !== undefined) document.getElementById('weatherDesc').innerText = data.weather;
                 if (data.ambTemp !== undefined) document.getElementById('ambTemp').innerText = Number(data.ambTemp).toFixed(1);
                 if (data.ambHum !== undefined)  document.getElementById('ambHum').innerText  = data.ambHum;
 
+                // --- BMS Core Telemetry ---
                 if (data.soc !== undefined)    document.getElementById('socVal').innerText       = data.soc + "%";
                 if (data.totalV !== undefined) document.getElementById('totalVoltage').innerText = Number(data.totalV).toFixed(2) + "V";
                 if (data.curr !== undefined)   document.getElementById('currentVal').innerText  = Number(data.curr).toFixed(2) + "A";
 
+                // --- BMS Diagnostic Telemetry ---
                 if (data.hi !== undefined)   document.getElementById('highCell').innerText = Number(data.hi).toFixed(3);
                 if (data.lo !== undefined)   document.getElementById('lowCell').innerText  = Number(data.lo).toFixed(3);
                 if (data.diff !== undefined) document.getElementById('voltDiff').innerText = Number(data.diff).toFixed(3);
                 if (data.bal !== undefined)  document.getElementById('balCurr').innerText  = Number(data.bal).toFixed(3);
 
+                // --- Individual Cell Array ---
                 if (Array.isArray(data.cells)) {
                     data.cells.forEach((val, idx) => {
                         const cellElem = document.getElementById(`cell_${idx + 1}`);
@@ -244,10 +253,10 @@
             }
         };
 
+        // Secure MQTT Connect Routine
         function connectMQTT() {
             console.log("[MQTT] Connecting to wss://broker.emqx.io:8084/mqtt...");
             client.connect({
-                path: "/mqtt",
                 useSSL: true,
                 onSuccess: function () {
                     console.log("[MQTT] Connected! Subscribing to:", topicLive);
@@ -264,6 +273,7 @@
             });
         }
 
+        // Initialize Connection
         connectMQTT();
     </script>
 </body>
