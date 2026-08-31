@@ -22,8 +22,9 @@
     .card-val { font-size: 1.1rem; font-weight: bold; }
     .card-lbl { font-size: 0.65rem; color: #8a9ba8; margin-top: 4px; }
     .cyan { color: #00bcd4; } .red { color: #ff5252; } .green { color: #00e676; }
-    .cell-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
-    .cell-item { background: #161d22; padding: 8px; border-radius: 6px; display: flex; align-items: center; }
+    .section-title { color: #00e676; margin: 12px 0 6px 0; font-size: 0.95rem; font-weight: bold; }
+    .cell-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+    .cell-item { background: #161d22; padding: 8px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; }
     .cell-idx { background: #00bcd4; color: #000; font-weight: bold; font-size: 0.75rem; border-radius: 4px; padding: 2px 5px; margin-right: 8px; }
     .nav-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #11161a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #1c242b; }
     .nav-btn { background: none; border: none; color: #8a9ba8; font-size: 0.8rem; cursor: pointer; }
@@ -65,10 +66,9 @@
       <div><div class="card-val green" id="diffCell">--</div><div class="card-lbl">Volt.-Diff(V)</div></div>
       <div><div class="card-val green" id="balCurr">--</div><div class="card-lbl">Bal.-Curr.(A)</div></div>
     </div>
-  </div>
 
-  <div id="statusPage" class="page">
-    <h4 style="color: #00e676; margin: 10px 0;">Cell Voltages (V)</h4>
+    <!-- Cell Voltages relocated directly into Main Window -->
+    <div class="section-title">Cell Voltages (V)</div>
     <div class="cell-grid" id="cellContainer"></div>
   </div>
 
@@ -92,7 +92,6 @@
   </div>
 
   <div class="nav-bar">
-    <button class="nav-btn" onclick="showPage('statusPage', this)">Status</button>
     <button class="nav-btn active" onclick="showPage('homePage', this)">Home</button>
     <button class="nav-btn" onclick="showPage('logsPage', this)">Logs</button>
   </div>
@@ -156,7 +155,7 @@
       const endDate = new Date(endVal);
 
       const lines = rawLogBuffer.split('\n');
-      let filtered = lines[0] + '\n'; // Keep header
+      let filtered = lines[0] + '\n';
 
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
