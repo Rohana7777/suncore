@@ -190,12 +190,11 @@
     </div>
 
     <script>
-        // --- Secure MQTT WebSocket Configuration ---
-        const brokerHost = "broker.hivemq.com";
-        const brokerPort = 8884; // Secure TLS WebSocket Port (wss://)
+        // --- EMQX Secure WebSocket Configuration ---
+        const brokerHost = "broker.emqx.io";
+        const brokerPort = 8084; // Secure WSS port for EMQX
         const topicLive  = "suncore/jk_bms/live_data";
 
-        // Generate a random unique Client ID to prevent connection dropping
         const clientId = "SuncoreWeb-" + Math.floor(Math.random() * 100000);
         const client = new Paho.MQTT.Client(brokerHost, brokerPort, clientId);
 
@@ -218,7 +217,7 @@
             setTimeout(connectMQTT, 3000);
         };
 
-        // Incoming Payload Message Handler (with explicit console output)
+        // Incoming Payload Handler
         client.onMessageArrived = function (message) {
             console.log("[MQTT Payload Received]:", message.payloadString);
             try {
@@ -240,7 +239,7 @@
                 if (data.diff !== undefined) document.getElementById('voltDiff').innerText = Number(data.diff).toFixed(3);
                 if (data.bal !== undefined)  document.getElementById('balCurr').innerText  = Number(data.bal).toFixed(3);
 
-                // --- Individual Cell Array Parsing ---
+                // --- Individual Cell Array ---
                 if (Array.isArray(data.cells)) {
                     data.cells.forEach((val, idx) => {
                         const cellElem = document.getElementById(`cell_${idx + 1}`);
@@ -254,11 +253,11 @@
 
         // Secure MQTT Connect Routine
         function connectMQTT() {
-            console.log("[MQTT] Attempting connection to wss://broker.hivemq.com:8884/mqtt...");
+            console.log("[MQTT] Connecting to wss://broker.emqx.io:8084/mqtt...");
             client.connect({
-                useSSL: true, // Enables TLS for WSS connections on port 8884
+                useSSL: true,
                 onSuccess: function () {
-                    console.log("[MQTT] Connected successfully! Subscribing to:", topicLive);
+                    console.log("[MQTT] Connected! Subscribing to:", topicLive);
                     document.getElementById('cloudStatus').innerText = "ONLINE";
                     document.getElementById('cloudStatus').className = "status-online";
                     client.subscribe(topicLive);
