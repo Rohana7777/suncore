@@ -9,7 +9,7 @@
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background-color: #0b0f12; color: #ffffff; margin: 0; padding: 12px; padding-bottom: 70px; }
     .top-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1c242b; padding-bottom: 8px; }
-    .status-badge { color: #ff5252; font-weight: bold; font-size: 0.85rem; transition: color 0.3s; }
+    .status-badge { color: #00e676; font-weight: bold; font-size: 0.85rem; }
     .gauge-container { position: relative; width: 220px; height: 220px; margin: 15px auto; }
     .gauge-svg { transform: rotate(-90deg); width: 100%; height: 100%; }
     .gauge-bg { fill: none; stroke: #1c242b; stroke-width: 12; }
@@ -42,14 +42,14 @@
 <body>
 
   <div class="top-bar">
-    <div class="status-badge" id="connStatus">Cloud Status: DEVICE OFFLINE</div>
+    <div class="status-badge" id="connStatus">Connecting...</div>
   </div>
 
   <div id="homePage" class="page active">
     <div class="gauge-container">
       <svg class="gauge-svg" viewBox="0 0 100 100">
         <circle class="gauge-bg" cx="50" cy="50" r="40" />
-        <circle id="gaugeArc" class="gauge-fill" cx="50" cy="50" r="40" stroke-dasharray="251.2" stroke-dashoffset="251.2" />
+        <circle id="gaugeArc" class="gauge-fill" cx="50" cy="50" r="40" stroke-dasharray="251.2" stroke-dashoffset="0" />
       </svg>
       <div class="gauge-text">
         <div class="soc-val" id="socText">--%</div>
@@ -67,6 +67,7 @@
       <div><div class="card-val green" id="balCurr">--</div><div class="card-lbl">Bal.-Curr.(A)</div></div>
     </div>
 
+    <!-- Cell Voltages relocated directly into Main Window -->
     <div class="section-title">Cell Voltages (V)</div>
     <div class="cell-grid" id="cellContainer"></div>
   </div>
@@ -97,25 +98,16 @@
 
   <script>
     let rawLogBuffer = "";
-    let lastDataTime = 0;
     const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
 
     client.on('connect', () => {
+      document.getElementById('connStatus').innerText = 'Cloud Status: ONLINE';
       client.subscribe('suncore/jk_bms/live_data');
       client.subscribe('suncore/jk_bms/history_data');
-      client.subscribe('suncore/jk_bms/status');
     });
 
     client.on('message', (topic, message) => {
-      if (topic === 'suncore/jk_bms/status') {
-        const status = message.toString();
-        if (status === 'OFFLINE') {
-          setDeviceOffline();
-        }
-      } else if (topic === 'suncore/jk_bms/live_data') {
-        lastDataTime = Date.now();
-        setDeviceOnline();
-
+      if (topic === 'suncore/jk_bms/live_data') {
         const d = JSON.parse(message.toString());
         document.getElementById('socText').innerText = d.soc + '%';
         document.getElementById('voltText').innerText = d.totalV.toFixed(2) + 'V';
@@ -144,27 +136,8 @@
       }
     });
 
-    // 5-Second Watchdog Timer: Mark offline if telemetry stream stops
-    setInterval(() => {
-      if (Date.now() - lastDataTime > 5000 && lastDataTime !== 0) {
-        setDeviceOffline();
-      }
-    }, 2500);
-
-    function setDeviceOnline() {
-      const el = document.getElementById('connStatus');
-      el.innerText = 'Cloud Status: ONLINE';
-      el.style.color = '#00e676';
-    }
-
-    function setDeviceOffline() {
-      const el = document.getElementById('connStatus');
-      el.innerText = 'Cloud Status: DEVICE OFFLINE';
-      el.style.color = '#ff5252';
-    }
-
     function fetchLogs() {
-      rawLogBuffer = "";
+      rawLogBuffer = "DateTime,TotalV,Current,SOC,HighCell,LowCell,VoltDiff\n";
       document.getElementById('logArea').value = "Fetching from ESP32...";
       client.publish('suncore/jk_bms/get_history', 'FETCH_LOGS');
     }
@@ -184,7 +157,7 @@
       const lines = rawLogBuffer.split('\n');
       let filtered = lines[0] + '\n';
 
-      for (int i = 1; i < lines.length; i++) {
+      for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         const parts = lines[i].split(',');
         const rowDate = new Date(parts[0]);
