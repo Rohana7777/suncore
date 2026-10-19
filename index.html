@@ -1,213 +1,199 @@
-esp32_ble_tracker:
-on_ble_advertise:
-then:
-- lambda: |-
-if (x.get_name().rfind("JK-", 0) == 0) {
-ESP_LOGI("ble_adv", "New JK-BMS found");
-ESP_LOGI("ble_adv", " Name: %s", x.get_name().c_str());
-ESP_LOGI("ble_adv", " MAC address: %s", x.address_str().c_str());
-ESP_LOGD("ble_adv", " Advertised service UUIDs:");
-for (auto uuid : x.get_service_uuids()) {
-ESP_LOGD("ble_adv", " - %s", uuid.to_string().c_str());
-}
-}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JK BMS Monitor</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #0b0f12; color: #ffffff; margin: 0; padding: 12px; padding-bottom: 70px; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1c242b; padding-bottom: 8px; }
+    .status-badge { color: #00e676; font-weight: bold; font-size: 0.85rem; }
+    .gauge-container { position: relative; width: 220px; height: 220px; margin: 15px auto; }
+    .gauge-svg { transform: rotate(-90deg); width: 100%; height: 100%; }
+    .gauge-bg { fill: none; stroke: #1c242b; stroke-width: 12; }
+    .gauge-fill { fill: none; stroke: #00e676; stroke-width: 12; stroke-linecap: round; transition: stroke-dashoffset 0.5s; }
+    .gauge-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+    .soc-val { font-size: 2.8rem; font-weight: bold; color: #00e676; }
+    .pill { background: #111a1e; border: 1px solid #00e676; border-radius: 12px; padding: 2px 12px; font-size: 0.9rem; margin: 2px 0; display: inline-block; }
+    .alert-box { background: #d87a00; color: #000; border-radius: 8px; padding: 8px 12px; font-weight: bold; font-size: 0.85rem; margin-bottom: 12px; }
+    .card-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; background: #161d22; border-radius: 8px; padding: 10px; margin-bottom: 10px; text-align: center; }
+    .card-val { font-size: 1.1rem; font-weight: bold; }
+    .card-lbl { font-size: 0.65rem; color: #8a9ba8; margin-top: 4px; }
+    .cyan { color: #00bcd4; } .red { color: #ff5252; } .green { color: #00e676; }
+    .section-title { color: #00e676; margin: 12px 0 6px 0; font-size: 0.95rem; font-weight: bold; }
+    .cell-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+    .cell-item { background: #161d22; padding: 8px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; }
+    .cell-idx { background: #00bcd4; color: #000; font-weight: bold; font-size: 0.75rem; border-radius: 4px; padding: 2px 5px; margin-right: 8px; }
+    .nav-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #11161a; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #1c242b; }
+    .nav-btn { background: none; border: none; color: #8a9ba8; font-size: 0.8rem; cursor: pointer; }
+    .nav-btn.active { color: #00e676; font-weight: bold; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .filter-box { background: #161d22; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
+    .filter-box label { font-size: 0.8rem; color: #8a9ba8; display: block; margin-top: 6px; }
+    .filter-box input { width: 100%; background: #0b0f12; color: #00e676; border: 1px solid #1c242b; padding: 8px; border-radius: 4px; font-size: 0.9rem; }
+    .action-btn { background: #00e676; color: #000; border: none; padding: 10px 14px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 10px; margin-right: 6px; }
+    .danger-btn { background: #ff5252; color: #fff; border: none; padding: 10px 14px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 10px; }
+    textarea { width: 100%; height: 220px; background: #161d22; color: #00e676; border: 1px solid #1c242b; border-radius: 6px; padding: 8px; font-family: monospace; font-size: 0.8rem; margin-top: 10px; }
+  </style>
+</head>
+<body>
 
-ble_client:
+  <div class="top-bar">
+    <div class="status-badge" id="connStatus">Connecting...</div>
+  </div>
 
-mac_address: ${mac_address}
-id: client0
-jk_bms_ble:
+  <div id="homePage" class="page active">
+    <div class="gauge-container">
+      <svg class="gauge-svg" viewBox="0 0 100 100">
+        <circle class="gauge-bg" cx="50" cy="50" r="40" />
+        <circle id="gaugeArc" class="gauge-fill" cx="50" cy="50" r="40" stroke-dasharray="251.2" stroke-dashoffset="0" />
+      </svg>
+      <div class="gauge-text">
+        <div class="soc-val" id="socText">--%</div>
+        <div class="pill" id="voltText">--V</div><br>
+        <div class="pill" id="currText">--A</div>
+      </div>
+    </div>
 
-ble_client_id: client0
-protocol_version: ${protocol_version}
-throttle: 5s
-id: bms0
-binary_sensor:
+    <div class="alert-box">Status: Live MQTT Cloud Sync</div>
 
-platform: jk_bms_ble
-balancing:
-name: "${name} balancing"
-charging:
-name: "${name} charging"
-discharging:
-name: "${name} discharging"
-online_status:
-name: "${name} online status"
-button:
+    <div class="card-grid">
+      <div><div class="card-val cyan" id="hiCell">--</div><div class="card-lbl">High Cell(V)</div></div>
+      <div><div class="card-val red" id="loCell">--</div><div class="card-lbl">Low Cell(V)</div></div>
+      <div><div class="card-val green" id="diffCell">--</div><div class="card-lbl">Volt.-Diff(V)</div></div>
+      <div><div class="card-val green" id="balCurr">--</div><div class="card-lbl">Bal.-Curr.(A)</div></div>
+    </div>
 
-platform: jk_bms_ble
-retrieve_settings:
-name: "${name} retrieve settings"
-retrieve_device_info:
-name: "${name} retrieve device info"
-number:
+    <!-- Cell Voltages relocated directly into Main Window -->
+    <div class="section-title">Cell Voltages (V)</div>
+    <div class="cell-grid" id="cellContainer"></div>
+  </div>
 
-platform: jk_bms_ble
-jk_bms_ble_id: bms0
-balance_trigger_voltage:
-name: "${name} balance trigger voltage"
-cell_count:
-name: "${name} cell count"
-total_battery_capacity:
-name: "${name} total battery capacity"
-cell_voltage_overvoltage_protection:
-name: "${name} cell voltage overvoltage protection"
-cell_voltage_overvoltage_recovery:
-name: "${name} cell voltage overvoltage recovery"
-cell_voltage_undervoltage_protection:
-name: "${name} cell voltage undervoltage protection"
-cell_voltage_undervoltage_recovery:
-name: "${name} cell voltage undervoltage recovery"
-balance_starting_voltage:
-name: "${name} balance starting voltage"
-voltage_calibration:
-name: "${name} voltage calibration"
-current_calibration:
-name: "${name} current calibration"
-power_off_voltage:
-name: "${name} power off voltage"
-max_balance_current:
-name: "${name} max balance current"
-max_charge_current:
-name: "${name} max charge current"
-max_discharge_current:
-name: "${name} max discharge current"
-sensor:
+  <div id="logsPage" class="page">
+    <h4 style="color: #00e676; margin: 10px 0;">Filter Flash Memory Logs</h4>
+    
+    <div class="filter-box">
+      <label>From Date & Time:</label>
+      <input type="datetime-local" id="startTime">
 
-platform: jk_bms_ble
-jk_bms_ble_id: bms0
-min_cell_voltage:
-name: "${name} min cell voltage"
-max_cell_voltage:
-name: "${name} max cell voltage"
-min_voltage_cell:
-name: "${name} min voltage cell"
-max_voltage_cell:
-name: "${name} max voltage cell"
-delta_cell_voltage:
-name: "${name} delta cell voltage"
-average_cell_voltage:
-name: "${name} average cell voltage"
-cell_voltage_1:
-name: "${name} cell voltage 1"
-cell_voltage_2:
-name: "${name} cell voltage 2"
-cell_voltage_3:
-name: "${name} cell voltage 3"
-cell_voltage_4:
-name: "${name} cell voltage 4"
-cell_voltage_5:
-name: "${name} cell voltage 5"
-cell_voltage_6:
-name: "${name} cell voltage 6"
-cell_voltage_7:
-name: "${name} cell voltage 7"
-cell_voltage_8:
-name: "${name} cell voltage 8"
-cell_voltage_9:
-name: "${name} cell voltage 9"
-cell_voltage_10:
-name: "${name} cell voltage 10"
-cell_voltage_11:
-name: "${name} cell voltage 11"
-cell_voltage_12:
-name: "${name} cell voltage 12"
-cell_voltage_13:
-name: "${name} cell voltage 13"
-cell_voltage_14:
-name: "${name} cell voltage 14"
-cell_voltage_15:
-name: "${name} cell voltage 15"
-cell_voltage_16:
-name: "${name} cell voltage 16"
-cell_resistance_1:
-name: "${name} cell resistance 1"
-cell_resistance_2:
-name: "${name} cell resistance 2"
-cell_resistance_3:
-name: "${name} cell resistance 3"
-cell_resistance_4:
-name: "${name} cell resistance 4"
-cell_resistance_5:
-name: "${name} cell resistance 5"
-cell_resistance_6:
-name: "${name} cell resistance 6"
-cell_resistance_7:
-name: "${name} cell resistance 7"
-cell_resistance_8:
-name: "${name} cell resistance 8"
-cell_resistance_9:
-name: "${name} cell resistance 9"
-cell_resistance_10:
-name: "${name} cell resistance 10"
-cell_resistance_11:
-name: "${name} cell resistance 11"
-cell_resistance_12:
-name: "${name} cell resistance 12"
-cell_resistance_13:
-name: "${name} cell resistance 13"
-cell_resistance_14:
-name: "${name} cell resistance 14"
-cell_resistance_15:
-name: "${name} cell resistance 15"
-cell_resistance_16:
-name: "${name} cell resistance 16"
-total_voltage:
-name: "${name} total voltage"
-current:
-name: "${name} current"
-power:
-name: "${name} power"
-charging_power:
-name: "${name} charging power"
-discharging_power:
-name: "${name} discharging power"
-temperature_sensor_1:
-name: "${name} temperature sensor 1"
-temperature_sensor_2:
-name: "${name} temperature sensor 2"
-power_tube_temperature:
-name: "${name} power tube temperature"
-state_of_charge:
-name: "${name} state of charge"
-capacity_remaining:
-name: "${name} capacity remaining"
-total_battery_capacity_setting:
-name: "${name} total battery capacity setting"
-charging_cycles:
-name: "${name} charging cycles"
-total_charging_cycle_capacity:
-name: "${name} total charging cycle capacity"
-total_runtime:
-name: "${name} total runtime"
-balancing_current:
-name: "${name} balancing current"
-errors_bitmask:
-name: "${name} errors bitmask"
-switch:
+      <label>To Date & Time:</label>
+      <input type="datetime-local" id="endTime">
 
-platform: jk_bms_ble
-charging:
-name: "${name} charging"
-discharging:
-name: "${name} discharging"
-balancer:
-name: "${name} balancer"
-emergency:
-name: "${name} emergency"
-disable_temperature_sensors:
-name: "${name} disable temperature sensors"
-display_always_on:
-name: "${name} display always on"
+      <button class="action-btn" onclick="fetchLogs()">Fetch Logs</button>
+      <button class="action-btn" onclick="filterLogs()">Apply Date Filter</button>
+      <button class="action-btn" onclick="downloadCSV()">Download CSV</button>
+      <button class="danger-btn" onclick="clearLogs()">Clear Flash</button>
+    </div>
 
-platform: ble_client
-ble_client_id: client0
-name: "${name} enable bluetooth connection"
+    <textarea id="logArea" readonly placeholder="Click 'Fetch Logs' then 'Apply Date Filter'..."></textarea>
+  </div>
 
-text_sensor:
+  <div class="nav-bar">
+    <button class="nav-btn active" onclick="showPage('homePage', this)">Home</button>
+    <button class="nav-btn" onclick="showPage('logsPage', this)">Logs</button>
+  </div>
 
-platform: jk_bms_ble
-errors:
-name: "${name} errors"
-total_runtime_formatted:
-name: "${name} total runtime formatted"`
+  <script>
+    let rawLogBuffer = "";
+    const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+
+    client.on('connect', () => {
+      document.getElementById('connStatus').innerText = 'Cloud Status: ONLINE';
+      client.subscribe('suncore/jk_bms/live_data');
+      client.subscribe('suncore/jk_bms/history_data');
+    });
+
+    client.on('message', (topic, message) => {
+      if (topic === 'suncore/jk_bms/live_data') {
+        const d = JSON.parse(message.toString());
+        document.getElementById('socText').innerText = d.soc + '%';
+        document.getElementById('voltText').innerText = d.totalV.toFixed(2) + 'V';
+        document.getElementById('currText').innerText = d.curr.toFixed(2) + 'A';
+        document.getElementById('hiCell').innerText = d.hi.toFixed(3);
+        document.getElementById('loCell').innerText = d.lo.toFixed(3);
+        document.getElementById('diffCell').innerText = d.diff.toFixed(3);
+        document.getElementById('balCurr').innerText = d.bal.toFixed(3);
+
+        const offset = 251.2 - (251.2 * d.soc / 100);
+        document.getElementById('gaugeArc').style.strokeDashoffset = offset;
+
+        let html = '';
+        d.cells.forEach((v, i) => {
+          let col = (v === d.hi && v > 0) ? '#00bcd4' : ((v === d.lo && v > 0) ? '#ff5252' : '#00e676');
+          let idxStr = (i + 1) < 10 ? '0' + (i + 1) : (i + 1);
+          html += `<div class="cell-item">
+            <span class="cell-idx">${idxStr}</span>
+            <span style="color:${col}; font-weight:bold;">${v.toFixed(3)}</span>
+          </div>`;
+        });
+        document.getElementById('cellContainer').innerHTML = html;
+      } else if (topic === 'suncore/jk_bms/history_data') {
+        rawLogBuffer += message.toString();
+        document.getElementById('logArea').value = rawLogBuffer;
+      }
+    });
+
+    function fetchLogs() {
+      rawLogBuffer = "DateTime,TotalV,Current,SOC,HighCell,LowCell,VoltDiff\n";
+      document.getElementById('logArea').value = "Fetching from ESP32...";
+      client.publish('suncore/jk_bms/get_history', 'FETCH_LOGS');
+    }
+
+    function filterLogs() {
+      const startVal = document.getElementById('startTime').value;
+      const endVal = document.getElementById('endTime').value;
+
+      if (!startVal || !endVal) {
+        alert("Please select both 'From' and 'To' dates.");
+        return;
+      }
+
+      const startDate = new Date(startVal);
+      const endDate = new Date(endVal);
+
+      const lines = rawLogBuffer.split('\n');
+      let filtered = lines[0] + '\n';
+
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const parts = lines[i].split(',');
+        const rowDate = new Date(parts[0]);
+
+        if (rowDate >= startDate && rowDate <= endDate) {
+          filtered += lines[i] + '\n';
+        }
+      }
+
+      document.getElementById('logArea').value = filtered;
+    }
+
+    function clearLogs() {
+      if (confirm("Clear all logs in flash memory?")) {
+        client.publish('suncore/jk_bms/get_history', 'CLEAR_LOGS');
+        rawLogBuffer = "";
+        document.getElementById('logArea').value = "Flash Memory Logs Cleared.";
+      }
+    }
+
+    function downloadCSV() {
+      const data = document.getElementById('logArea').value;
+      const blob = new Blob([data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.setAttribute('href', url);
+      a.setAttribute('download', 'bms_filtered_log.csv');
+      a.click();
+    }
+
+    function showPage(pageId, btn) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(pageId).classList.add('active');
+      btn.classList.add('active');
+    }
+  </script>
+</body>
+</html>
